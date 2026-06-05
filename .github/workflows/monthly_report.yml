@@ -47,7 +47,7 @@ jobs:
           MPLBACKEND: Agg
           AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
           AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
-          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          MSAL_TOKEN_CACHE: ${{ secrets.MSAL_TOKEN_CACHE }}
           REPORT_SENDER: ${{ secrets.REPORT_SENDER }}
           REPORT_RECIPIENTS: ${{ secrets.REPORT_RECIPIENTS }}
         run: |

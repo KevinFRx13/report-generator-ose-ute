@@ -47,6 +47,10 @@ class Settings:
     def azure_client_secret() -> str:
         return _require("AZURE_CLIENT_SECRET")
 
+    @staticmethod
+    def msal_token_cache() -> str:
+        return _require("MSAL_TOKEN_CACHE")
+
     # Email
     @staticmethod
     def bills_mailbox() -> str:

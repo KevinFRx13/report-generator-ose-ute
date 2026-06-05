@@ -17,7 +17,7 @@ from config.settings import Settings
 from src.storage.database import OseBill, UteBill
 
 GRAPH_BASE = "https://graph.microsoft.com/v1.0"
-SCOPES     = ["https://graph.microsoft.com/.default"]
+SCOPES     = ["https://graph.microsoft.com/Mail.Send"]
 
 MONTHS_ES = [
     "", "enero", "febrero", "marzo", "abril", "mayo", "junio",
@@ -26,15 +26,26 @@ MONTHS_ES = [
 
 
 def _get_token() -> str:
-    app = msal.ConfidentialClientApplication(
+    cache = msal.SerializableTokenCache()
+    cache.deserialize(base64.b64decode(Settings.msal_token_cache()).decode())
+
+    app = msal.PublicClientApplication(
         client_id=Settings.azure_client_id(),
-        client_credential=Settings.azure_client_secret(),
         authority=f"https://login.microsoftonline.com/{Settings.azure_tenant_id()}",
+        token_cache=cache,
     )
-    result = app.acquire_token_for_client(scopes=SCOPES)
-    if "access_token" not in result:
+
+    accounts = app.get_accounts()
+    if not accounts:
         raise RuntimeError(
-            f"Error al obtener token de Microsoft Graph: {result.get('error_description')}"
+            "Token cache vacio. Ejecuta setup_auth.py y actualiza el secret MSAL_TOKEN_CACHE."
+        )
+
+    result = app.acquire_token_silent(SCOPES, account=accounts[0])
+    if not result or "access_token" not in result:
+        raise RuntimeError(
+            "Token expirado o revocado. Vuelve a ejecutar setup_auth.py y actualiza "
+            f"el secret MSAL_TOKEN_CACHE. Error: {result.get('error_description') if result else 'sin resultado'}"
         )
     return result["access_token"]
 
