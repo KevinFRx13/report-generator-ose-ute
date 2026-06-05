@@ -1,0 +1,68 @@
+name: Informe Mensual OSE/UTE
+
+on:
+  # Runs at 02:55 UTC (= 23:55 Uruguay UTC-3) on days 28-31 of every month.
+  # The Python script checks internally if today is the actual last day.
+  schedule:
+    - cron: '55 2 28-31 * *'
+
+  # Manual trigger: useful for testing or regenerating a past month.
+  workflow_dispatch:
+    inputs:
+      month:
+        description: 'Mes a generar (YYYY-MM). Vacío = mes actual.'
+        required: false
+        type: string
+
+jobs:
+  generate-report:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create output directory
+        run: mkdir -p data/reports
+
+      # When triggered manually, bypass the last-day-of-month check.
+      - name: Set FORCE_MONTHLY (manual trigger only)
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "FORCE_MONTHLY=true" >> $GITHUB_ENV
+
+      # When triggered manually with a specific month, generate that month.
+      # Otherwise run the normal 'monthly' command (which checks the date).
+      - name: Generate and send report
+        env:
+          DB_PATH: data/bills.db
+          MPLBACKEND: Agg
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          REPORT_SENDER: ${{ secrets.REPORT_SENDER }}
+          REPORT_RECIPIENTS: ${{ secrets.REPORT_RECIPIENTS }}
+        run: |
+          if [ -n "${{ github.event.inputs.month }}" ]; then
+            python main.py generate-report ${{ github.event.inputs.month }}
+          else
+            python main.py monthly
+          fi
+
+      # Upload the generated PDF as a downloadable artifact (only if it exists).
+      - name: Upload report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: informe-mensual
+          path: data/reports/*.pdf
+          if-no-files-found: ignore
+          retention-days: 30

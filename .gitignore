@@ -1,0 +1,12 @@
+.env
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+data/bills/
+data/reports/
+*.log
+_task.xml
+
+# Azure Functions (not used, kept for reference)
+local.settings.json
