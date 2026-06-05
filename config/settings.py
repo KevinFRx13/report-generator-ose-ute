@@ -29,10 +29,10 @@ class Settings:
     db_path: Path = ROOT / os.getenv("DB_PATH", "data/bills.db")
     bills_folder: Path = ROOT / os.getenv("BILLS_FOLDER", "data/bills")
 
-    # OpenRouter
+    # Anthropic
     @staticmethod
-    def openrouter_api_key() -> str:
-        return _require("OPENROUTER_API_KEY")
+    def anthropic_api_key() -> str:
+        return _require("ANTHROPIC_API_KEY")
 
     # Azure / Graph API
     @staticmethod

@@ -1,69 +1,45 @@
 """
-Extract structured data from OSE and UTE PDF bills via OpenRouter (free models).
+Extract structured data from OSE and UTE PDF bills via Anthropic Vision API.
 
 Strategy:
-  1. Extract text from PDF using PyMuPDF.
-  2. Send plain text to a free LLM on OpenRouter, asking it to return all
-     numeric values as STRINGS in the original Spanish format (e.g. "2.454,840").
-  3. Parse those strings with a locale-aware parser that correctly handles
-     the Uruguayan/Spanish number format (dot = thousands, comma = decimal).
-  4. Override the account number with a regex-based extractor (more reliable).
-  5. Validate key fields (IVA ≈ 22 % of gravado, kWh within sane range).
+  1. Render each PDF page as a PNG image.
+  2. Send the images + a structured prompt to Claude.
+  3. Parse the JSON response, applying locale-aware number parsing
+     (Uruguayan format: dot = thousands, comma = decimal).
+  4. Override account number with regex extraction (more reliable).
+  5. Validate key fields (IVA ≈ 22% of gravado, kWh within sane range).
 """
 
 import base64
 import json
 import re
-import time
 from datetime import date
 from pathlib import Path
 
+import anthropic
 import fitz  # PyMuPDF
-from openai import OpenAI
 
 from config.settings import Settings
 from src.storage.database import OseBill, UteBill
 
-# Vision models — tried first so the model sees the real PDF layout.
-_VISION_MODELS = [
-    "openrouter/free",
-    "google/gemma-4-26b-a4b-it:free",
-    "google/gemma-3-27b-it:free",
-]
-# Text-only fallback when all vision models are rate-limited or unavailable.
-_TEXT_MODELS = [
-    "openai/gpt-oss-120b:free",
-    "nvidia/nemotron-3-super-120b-a12b:free",
-    "nvidia/nemotron-3-nano-30b-a3b:free",
-    "openai/gpt-oss-20b:free",
-]
-_MIN_TEXT_CHARS = 200
+_MODEL = "claude-haiku-4-5-20251001"
 
 
 # ── Number parsing ─────────────────────────────────────────────────────────────
 
 def _parse_num(value) -> float | None:
-    """
-    Parse a number that may be in Spanish format (1.234,56) or plain (1234.56).
-    The model is instructed to return numbers as strings; this function handles
-    either strings or bare JSON numbers.
-    """
+    """Parse a number in Spanish format (1.234,56) or plain (1234.56)."""
     if value is None:
         return None
     s = str(value).strip()
-    s = re.sub(r'[$\s]', '', s)          # strip currency symbols / spaces
+    s = re.sub(r'[$\s]', '', s)
     if not s or s.lower() in ('null', 'none', ''):
         return None
 
     if ',' in s and '.' in s:
-        # Spanish format: 2.454,840 → 2454.84
         s = s.replace('.', '').replace(',', '.')
     elif ',' in s:
-        # Decimal comma only: 197,30 → 197.30
         s = s.replace(',', '.')
-    else:
-        # Plain integer or English decimal — use as-is
-        pass
 
     return float(s)
 
@@ -100,8 +76,6 @@ REGLAS:
 - INVARIANTE: importe_gravado > iva > 0 siempre (iva ≈ 22% del gravado, es decir, gravado ≈ 4,5× iva). Si iva > importe_gravado, hay un error de mapeo de filas.
 - INVARIANTE: total = importe_gravado + iva. total es siempre el valor más grande de los tres.
 - Si un campo no aparece, usa null.
-
-TEXTO DE LA FACTURA:
 """.strip()
 
 _UTE_PROMPT = """
@@ -141,8 +115,6 @@ REGLAS CRÍTICAS:
 - consumo_reactivo_kvarh: usar el campo 'Consumo Reactiva (kVArh)' del encabezado del PDF, no la tabla de lecturas (que puede tener múltiples filas Q1/Q4).
 - cargo_reactivo_total es la suma de todas las líneas "Energía Reactiva" y "Potencia Reactiva" del DETALLE DE FACTURACIÓN (puede ser negativo).
 - IVA Tasa Básica es ~22% del Importe Gravado.
-
-TEXTO DE LA FACTURA:
 """.strip()
 
 
@@ -158,17 +130,10 @@ def _regex_ose_account(text: str) -> str | None:
     return m.group(1) if m else None
 
 
-# ── OpenRouter client ──────────────────────────────────────────────────────────
+# ── Anthropic client ───────────────────────────────────────────────────────────
 
-def _get_client() -> OpenAI:
-    return OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=Settings.openrouter_api_key(),
-        default_headers={
-            "HTTP-Referer": "https://github.com/tifor/report-generator",
-            "X-Title": "TIFOR Facturas Reporter",
-        },
-    )
+def _get_client() -> anthropic.Anthropic:
+    return anthropic.Anthropic(api_key=Settings.anthropic_api_key())
 
 
 def _extract_text(pdf_path: Path) -> str:
@@ -180,31 +145,17 @@ def _pdf_to_image_blocks(pdf_path: Path) -> list[dict]:
     doc = fitz.open(str(pdf_path))
     blocks = []
     for page in doc:
-        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        pix    = page.get_pixmap(matrix=fitz.Matrix(2, 2))
         img_b64 = base64.b64encode(pix.tobytes("png")).decode()
         blocks.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:image/png;base64,{img_b64}"},
+            "type": "image",
+            "source": {
+                "type":       "base64",
+                "media_type": "image/png",
+                "data":       img_b64,
+            },
         })
     return blocks
-
-
-def _try_models(client: OpenAI, messages: list[dict], model_list: list[str]) -> str:
-    last_exc = None
-    for model in model_list:
-        try:
-            response = client.chat.completions.create(model=model, messages=messages)
-            content = response.choices[0].message.content
-            if not content or not content.strip():
-                raise ValueError("El modelo devolvió contenido vacío.")
-            if not re.search(r'\{.*\}', content, re.DOTALL):
-                raise ValueError("La respuesta no contiene JSON válido.")
-            return content
-        except Exception as exc:
-            last_exc = exc
-            tag = "[rate limit]" if "429" in str(exc) else "[no disponible]"
-            print(f"  {tag} {model} — pasando al siguiente...")
-    raise last_exc or RuntimeError("Todos los modelos fallaron.")
 
 
 def _parse_json_response(raw: str) -> dict:
@@ -218,17 +169,14 @@ def _parse_json_response(raw: str) -> dict:
 
 
 def _call_model(pdf_path: Path, prompt: str) -> dict:
-    client = _get_client()
-    image_blocks = _pdf_to_image_blocks(pdf_path)
-    vision_messages = [{"role": "user", "content": image_blocks + [{"type": "text", "text": prompt}]}]
-    try:
-        raw = _try_models(client, vision_messages, _VISION_MODELS)
-    except Exception:
-        print("  [vision agotado] Todos los modelos de visión fallaron — usando extracción de texto...")
-        text = _extract_text(pdf_path)
-        text_messages = [{"role": "user", "content": f"{prompt}\n\n{text}"}]
-        raw = _try_models(client, text_messages, _TEXT_MODELS)
-    return _parse_json_response(raw)
+    client  = _get_client()
+    content = _pdf_to_image_blocks(pdf_path) + [{"type": "text", "text": prompt}]
+    message = client.messages.create(
+        model=_MODEL,
+        max_tokens=1024,
+        messages=[{"role": "user", "content": content}],
+    )
+    return _parse_json_response(message.content[0].text)
 
 
 # ── Validation ─────────────────────────────────────────────────────────────────
@@ -244,13 +192,10 @@ _UTE_REQUIRED = ("numero_factura", "fecha_emision", "fecha_vencimiento",
 def _validate_required(data: dict, required: tuple, pdf_name: str) -> None:
     missing = [f for f in required if not data.get(f)]
     if missing:
-        raise ValueError(
-            f"Campos faltantes: {', '.join(missing)} ({pdf_name})"
-        )
+        raise ValueError(f"Campos faltantes: {', '.join(missing)} ({pdf_name})")
 
 
 def _validate_iva(gravado: float, iva: float, pdf_name: str) -> None:
-    """IVA should be ~22% of gravado. If it's off by >30%, something was misread."""
     if gravado <= 0:
         return
     expected = gravado * 0.22
@@ -258,17 +203,14 @@ def _validate_iva(gravado: float, iva: float, pdf_name: str) -> None:
     if ratio > 0.15:
         raise ValueError(
             f"IVA sospechoso: gravado={gravado:,.2f}, iva={iva:,.2f} "
-            f"(esperado ~{expected:,.2f}, diferencia {ratio:.0%}). "
-            f"El modelo probablemente confundio IVA con Ajuste por Redondeo. ({pdf_name})"
+            f"(esperado ~{expected:,.2f}, diferencia {ratio:.0%}). ({pdf_name})"
         )
 
 
 def _validate_kwh(value: float, field: str, pdf_name: str) -> None:
-    """Single-meter kWh values above 500,000/month are almost certainly wrong."""
     if value > 500_000:
         raise ValueError(
-            f"{field}={value:,.0f} kWh parece incorrecto (>500.000). "
-            f"Probablemente el modelo no convirtio el formato numerico espanol. ({pdf_name})"
+            f"{field}={value:,.0f} kWh parece incorrecto (>500.000). ({pdf_name})"
         )
 
 
@@ -283,9 +225,7 @@ def _parse_date(value) -> date | None:
 def extract_ose_bill(pdf_path: Path) -> OseBill:
     data = _call_model(pdf_path, _OSE_PROMPT)
 
-    # Regex override BEFORE validation — fixes cases where the model
-    # gets confused by text like "Cuenta 2344" near the real account number
-    text = _extract_text(pdf_path)
+    text       = _extract_text(pdf_path)
     regex_acct = _regex_ose_account(text)
     if regex_acct and Settings.location_name_by_ose_account(regex_acct):
         data["numero_cuenta"] = regex_acct
@@ -325,8 +265,7 @@ def extract_ose_bill(pdf_path: Path) -> OseBill:
 def extract_ute_bill(pdf_path: Path) -> UteBill:
     data = _call_model(pdf_path, _UTE_PROMPT)
 
-    # Regex override BEFORE validation
-    text = _extract_text(pdf_path)
+    text       = _extract_text(pdf_path)
     regex_acct = _regex_ute_account(text)
     if regex_acct and Settings.location_name_by_ute_account(regex_acct):
         data["numero_cuenta"] = regex_acct
@@ -339,9 +278,9 @@ def extract_ute_bill(pdf_path: Path) -> UteBill:
             f"Cuenta UTE '{data['numero_cuenta']}' no encontrada en config/locations.json."
         )
 
-    punta  = _parse_num(data.get("consumo_punta_kwh")) or 0.0
-    valle  = _parse_num(data.get("consumo_valle_kwh")) or 0.0
-    llano  = _parse_num(data.get("consumo_llano_kwh")) or 0.0
+    punta     = _parse_num(data.get("consumo_punta_kwh")) or 0.0
+    valle     = _parse_num(data.get("consumo_valle_kwh")) or 0.0
+    llano     = _parse_num(data.get("consumo_llano_kwh")) or 0.0
     total_kwh = _parse_num(data["consumo_activo_total_kwh"])
     gravado   = _parse_num(data["importe_gravado"])
     iva       = _parse_num(data["iva"])
@@ -393,14 +332,17 @@ def detect_utility(pdf_path: Path) -> str:
     if b"Usinas" in raw or b"ute.com.uy" in raw:
         return "UTE"
 
-    client = _get_client()
-    image_blocks = _pdf_to_image_blocks(pdf_path)
-    messages = [{"role": "user", "content": image_blocks + [
-        {"type": "text", "text": "Esta factura es de OSE o UTE? Solo responde 'OSE' o 'UTE'."}
-    ]}]
-    raw_ans = _try_models(client, messages, _VISION_MODELS)
-
-    answer = raw_ans.strip().upper()
+    client  = _get_client()
+    content = _pdf_to_image_blocks(pdf_path) + [{
+        "type": "text",
+        "text": "Esta factura es de OSE o UTE? Solo responde 'OSE' o 'UTE'.",
+    }]
+    message = client.messages.create(
+        model=_MODEL,
+        max_tokens=10,
+        messages=[{"role": "user", "content": content}],
+    )
+    answer = message.content[0].text.strip().upper()
     if "OSE" in answer:
         return "OSE"
     if "UTE" in answer:

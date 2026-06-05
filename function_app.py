@@ -9,7 +9,7 @@ Required Application Settings in the Function App:
   DB_PATH                         = /tmp/bills.db
   AZURE_STORAGE_CONNECTION_STRING = <connection string for the storage account>
   AZURE_BLOB_CONTAINER            = tifor-bills
-  OPENROUTER_API_KEY              = <key>
+  ANTHROPIC_API_KEY               = <key>
   AZURE_TENANT_ID                 = <tenant>
   AZURE_CLIENT_ID                 = <client>
   AZURE_CLIENT_SECRET             = <secret>
