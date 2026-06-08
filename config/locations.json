@@ -1,19 +1,30 @@
 {
-  "_comment": "OSE and UTE are completely independent account registries. Each account has its own name as it will appear in the report. There is no forced pairing between OSE and UTE accounts.",
+  "_comment": "Accounts are grouped by company. Each company has independent OSE and UTE account lists. There is no forced pairing between OSE and UTE accounts within a company.",
 
-  "ose_accounts": [
-    { "account": "41687944", "name": "Cno. Casavalle 5138" },
-    { "account": "42471961", "name": "Cno. Casavalle 5146" },
-    { "account": "32570160", "name": "Bv. José Batlle y Ordóñez" },
-    { "account": "37634843", "name": "Gral. Hornos" },
-    { "account": "35023910", "name": "Tacuarembó" }
-  ],
-
-  "ute_accounts": [
-    { "account": "0863440000", "name": "Cno. Casavalle 5146 - Planta" },
-    { "account": "6459602812", "name": "Cno. Casavalle 5146 - Bomba de Incendio" },
-    { "account": "7535940000", "name": "Bv. José Batlle y Ordóñez" },
-    { "account": "0453177987", "name": "Gral. Hornos" },
-    { "account": "6088631889", "name": "Tacuarembó" }
+  "companies": [
+    {
+      "name": "TIFOR",
+      "ose_accounts": [
+        { "account": "41687944", "name": "Cno. Casavalle 5138" },
+        { "account": "42471961", "name": "Cno. Casavalle 5146" },
+        { "account": "37634843", "name": "Gral. Hornos" },
+        { "account": "35023910", "name": "Tacuarembó" }
+      ],
+      "ute_accounts": [
+        { "account": "0863440000", "name": "Cno. Casavalle 5146 - Planta" },
+        { "account": "6459602812", "name": "Cno. Casavalle 5146 - Bomba de Incendio" },
+        { "account": "0453177987", "name": "Gral. Hornos" },
+        { "account": "6088631889", "name": "Tacuarembó" }
+      ]
+    },
+    {
+      "name": "Manuel Boullosa",
+      "ose_accounts": [
+        { "account": "XXXXXXXX", "name": "Pestalozzi 3857" }
+      ],
+      "ute_accounts": [
+        { "account": "XXXXXXXXXX", "name": "Pestalozzi 3857" }
+      ]
+    }
   ]
 }

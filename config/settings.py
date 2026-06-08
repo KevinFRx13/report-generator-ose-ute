@@ -73,17 +73,22 @@ class Settings:
     def ute_email_sender() -> str:
         return os.getenv("UTE_EMAIL_SENDER", "")
 
-    # ── Account registries (independent lists) ────────────────────────────────
+    # ── Company / account registries ─────────────────────────────────────────
+
+    @staticmethod
+    def companies() -> list[dict]:
+        """Return list of {name, ose_accounts, ute_accounts} per company."""
+        return _load_locations().get("companies", [])
 
     @staticmethod
     def ose_accounts() -> list[dict]:
-        """Return list of {account, name} for OSE, in display order."""
-        return _load_locations().get("ose_accounts", [])
+        """Flat list of all OSE {account, name} across companies (for bill extraction)."""
+        return [a for c in Settings.companies() for a in c.get("ose_accounts", [])]
 
     @staticmethod
     def ute_accounts() -> list[dict]:
-        """Return list of {account, name} for UTE, in display order."""
-        return _load_locations().get("ute_accounts", [])
+        """Flat list of all UTE {account, name} across companies (for bill extraction)."""
+        return [a for c in Settings.companies() for a in c.get("ute_accounts", [])]
 
     @staticmethod
     def location_name_by_ose_account(account: str) -> str | None:

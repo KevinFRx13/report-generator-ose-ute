@@ -99,7 +99,16 @@ ESQUEMA (todos los valores numéricos como STRING, tal como aparecen en la factu
   "cargo_reactivo_total": "string o null — suma de TODAS las líneas de energía reactiva en UYU (puede ser negativo si son descuentos, ej: '-3.409,50')",
   "importe_gravado": "string — 'Importe Gravado 22%' en UYU (ej: '195.823,39')",
   "iva": "string — 'IVA Tasa Básica 22%' en UYU (ej: '43.081,15')",
-  "total": "string — 'Total' en UYU (ej: '238.905,00')"
+  "total": "string — 'Total' en UYU (ej: '238.905,00')",
+  "potencia_punta_medida_kw": "string o null — columna 'Total de Medida' fila 'Potencia Punta' en kW. Solo para tarifas horarias con demanda. Ej: '52,40'",
+  "potencia_valle_medida_kw": "string o null — columna 'Total de Medida' fila 'Potencia Valle' en kW. Solo tarifas horarias.",
+  "potencia_llano_medida_kw": "string o null — columna 'Total de Medida' fila 'Potencia Llano' en kW. Solo tarifas horarias.",
+  "potencia_punta_contratada_kw": "string o null — potencia contratada para Punta en kW, de la primera tabla de la factura. Solo tarifas horarias.",
+  "potencia_valle_contratada_kw": "string o null — potencia contratada para Valle en kW. Solo tarifas horarias.",
+  "potencia_llano_contratada_kw": "string o null — potencia contratada para Llano en kW. Solo tarifas horarias.",
+  "potencia_medida_kw": "string o null — para tarifas con demanda simple (no horaria), la demanda máxima medida en kW del período, de la columna 'Total de Medida'. Null para tarifas horarias o si no aplica.",
+  "potencia_contratada_kw": "string o null — para tarifas con demanda simple, la potencia contratada en kW de la primera tabla. Null para tarifas horarias o si no aplica.",
+  "potencia_minimo_facturable_kw": "string o null — el mínimo facturable de demanda en kW indicado en la factura. Puede ser 0. Null si no aparece."
 }
 
 REGLAS CRÍTICAS:
@@ -309,6 +318,15 @@ def extract_ute_bill(pdf_path: Path) -> UteBill:
         iva_amount=iva,
         total_amount=total,
         pdf_path=str(pdf_path),
+        power_punta_kw=_parse_num(data.get("potencia_punta_medida_kw")),
+        power_valle_kw=_parse_num(data.get("potencia_valle_medida_kw")),
+        power_llano_kw=_parse_num(data.get("potencia_llano_medida_kw")),
+        power_punta_contracted_kw=_parse_num(data.get("potencia_punta_contratada_kw")),
+        power_valle_contracted_kw=_parse_num(data.get("potencia_valle_contratada_kw")),
+        power_llano_contracted_kw=_parse_num(data.get("potencia_llano_contratada_kw")),
+        power_measured_kw=_parse_num(data.get("potencia_medida_kw")),
+        power_contracted_kw=_parse_num(data.get("potencia_contratada_kw")),
+        power_min_billable_kw=_parse_num(data.get("potencia_minimo_facturable_kw")),
     )
 
 

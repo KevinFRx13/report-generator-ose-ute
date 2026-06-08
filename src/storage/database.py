@@ -44,6 +44,16 @@ class UteBill:
     iva_amount: float
     total_amount: float
     pdf_path: str | None = None
+    # Demand / power fields (extracted from UTE bill's measurement table)
+    power_punta_kw: float | None = None           # measured punta demand (kW)
+    power_valle_kw: float | None = None           # measured valle demand (kW)
+    power_llano_kw: float | None = None           # measured llano demand (kW)
+    power_punta_contracted_kw: float | None = None  # contracted punta (horaria tariff)
+    power_valle_contracted_kw: float | None = None
+    power_llano_contracted_kw: float | None = None
+    power_measured_kw: float | None = None        # measured demand (simple tariff)
+    power_contracted_kw: float | None = None      # contracted demand (simple tariff)
+    power_min_billable_kw: float | None = None    # minimum billable demand (simple tariff)
 
 
 # ── Database ──────────────────────────────────────────────────────────────────
@@ -112,6 +122,16 @@ class Database:
     def _init_schema(self):
         with self._conn() as conn:
             conn.executescript(SCHEMA)
+            # Migration: add power columns if they don't exist yet
+            for col in [
+                "power_punta_kw",           "power_valle_kw",           "power_llano_kw",
+                "power_punta_contracted_kw","power_valle_contracted_kw","power_llano_contracted_kw",
+                "power_measured_kw",        "power_contracted_kw",      "power_min_billable_kw",
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE ute_bills ADD COLUMN {col} REAL")
+                except Exception:
+                    pass  # column already exists
 
     # ── OSE ───────────────────────────────────────────────────────────────────
 
@@ -181,8 +201,11 @@ class Database:
              period_start, period_end,
              energy_punta_kwh, energy_valle_kwh, energy_llano_kwh, energy_total_kwh,
              reactive_energy_kvarh, reactive_charge,
-             amount_without_tax, iva_amount, total_amount, pdf_path)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+             amount_without_tax, iva_amount, total_amount, pdf_path,
+             power_punta_kw, power_valle_kw, power_llano_kw,
+             power_punta_contracted_kw, power_valle_contracted_kw, power_llano_contracted_kw,
+             power_measured_kw, power_contracted_kw, power_min_billable_kw)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
         """
         with self._conn() as conn:
             cur = conn.execute(sql, (
@@ -202,6 +225,15 @@ class Database:
                 bill.iva_amount,
                 bill.total_amount,
                 bill.pdf_path,
+                bill.power_punta_kw,
+                bill.power_valle_kw,
+                bill.power_llano_kw,
+                bill.power_punta_contracted_kw,
+                bill.power_valle_contracted_kw,
+                bill.power_llano_contracted_kw,
+                bill.power_measured_kw,
+                bill.power_contracted_kw,
+                bill.power_min_billable_kw,
             ))
             return cur.rowcount > 0
 
@@ -270,6 +302,21 @@ class Database:
             rows = conn.execute(sql).fetchall()
         return [dict(r) for r in rows]
 
+    def get_ute_power_history(self, location_name: str) -> list[dict]:
+        """Return per-month power demand data for one UTE location (last 12 months)."""
+        sql = """
+        SELECT strftime('%Y-%m', emission_date) AS month,
+               power_punta_kw, power_valle_kw, power_llano_kw,
+               power_punta_contracted_kw, power_valle_contracted_kw, power_llano_contracted_kw,
+               power_measured_kw, power_contracted_kw, power_min_billable_kw
+        FROM ute_bills
+        WHERE location_name = ?
+        ORDER BY emission_date ASC
+        """
+        with self._conn() as conn:
+            rows = conn.execute(sql, (location_name,)).fetchall()
+        return [dict(r) for r in rows]
+
     def invoice_exists(self, invoice_number: str, utility: str) -> bool:
         table = "ose_bills" if utility == "OSE" else "ute_bills"
         with self._conn() as conn:
@@ -317,4 +364,13 @@ def _row_to_ute(row) -> UteBill:
         iva_amount=row["iva_amount"],
         total_amount=row["total_amount"],
         pdf_path=row["pdf_path"],
+        power_punta_kw=row["power_punta_kw"],
+        power_valle_kw=row["power_valle_kw"],
+        power_llano_kw=row["power_llano_kw"],
+        power_punta_contracted_kw=row["power_punta_contracted_kw"],
+        power_valle_contracted_kw=row["power_valle_contracted_kw"],
+        power_llano_contracted_kw=row["power_llano_contracted_kw"],
+        power_measured_kw=row["power_measured_kw"],
+        power_contracted_kw=row["power_contracted_kw"],
+        power_min_billable_kw=row["power_min_billable_kw"],
     )

@@ -369,6 +369,10 @@ def main():
     # sync-db
     sub.add_parser("sync-db", help="Subir bills.db a Azure Blob Storage")
 
+    # send-report
+    sr = sub.add_parser("send-report", help="Generar y enviar informe para un mes especifico")
+    sr.add_argument("month", metavar="YYYY-MM")
+
     # monthly
     sub.add_parser("monthly", help="Generar y enviar informe solo si hoy es el ultimo dia del mes")
 
@@ -408,6 +412,12 @@ def main():
 
     elif args.command == "sync-db":
         cmd_sync_db()
+
+    elif args.command == "send-report":
+        year, month = _parse_year_month(args.month)
+        pdf_path = cmd_generate_report(year, month, db)
+        send_report(pdf_path, year, month)
+        print(f"[send-report] Informe {year}-{month:02d} enviado.")
 
     elif args.command == "monthly":
         cmd_monthly(db)

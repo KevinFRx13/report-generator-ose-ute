@@ -20,6 +20,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import cm
 from reportlab.platypus import (
     Image,
+    KeepTogether,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -33,6 +34,7 @@ from src.reports.charts import (
     generate_charts,
     generate_ose_location_charts,
     generate_ute_location_charts,
+    generate_ute_power_charts,
 )
 
 # ── Colores ────────────────────────────────────────────────────────────────────
@@ -131,6 +133,11 @@ def _build_styles() -> dict:
             "summary_label", fontSize=9, textColor=C_HEADER_BG,
             fontName="Helvetica-Bold", alignment=TA_CENTER,
             spaceBefore=12, spaceAfter=4,
+        ),
+        "section_company": ParagraphStyle(
+            "section_company", fontSize=15, textColor=colors.white,
+            fontName="Helvetica-Bold", spaceBefore=14, spaceAfter=6,
+            backColor=C_HEADER_BG, borderPadding=(6, 8, 6, 8),
         ),
     }
 
@@ -252,7 +259,7 @@ def _build_ose_section(ose_names: list[str],
                        ose_bills: dict[str, OseBill | None],
                        ose_loc_charts: dict[str, dict],
                        styles: dict) -> list:
-    content = [Paragraph("  Agua — OSE", styles["section_ose"])]
+    content = []
 
     rows = [["Cuenta / Ubicación", "Período", "Consumo (m³)", "Total (c/IVA)"]]
     for name in ose_names:
@@ -275,14 +282,19 @@ def _build_ose_section(ose_names: list[str],
     ts.add("ALIGN",         (0, 1),  (0, -1),  "LEFT")
     ts.add("ALIGN",         (2, 1),  (-1, -1), "RIGHT")
     tbl.setStyle(ts)
-    content.append(tbl)
-    content.append(Spacer(1, 0.3 * cm))
+    content.append(KeepTogether([
+        Paragraph("  Agua — OSE", styles["section_ose"]),
+        tbl,
+        Spacer(1, 0.3 * cm),
+    ]))
 
     for name in ose_names:
         b = ose_bills.get(name)
-        content.append(Paragraph(f"Detalle: {name}", styles["account_ose"]))
         if not b:
-            content.append(Paragraph("Sin factura para este período.", styles["no_bill"]))
+            content.append(KeepTogether([
+                Paragraph(f"Detalle: {name}", styles["account_ose"]),
+                Paragraph("Sin factura para este período.", styles["no_bill"]),
+            ]))
             continue
 
         detail_rows = [
@@ -302,12 +314,17 @@ def _build_ose_section(ose_names: list[str],
         ts2.add("FONTNAME",   (3, -1), (3, -1), "Helvetica-Bold")
         ts2.add("TEXTCOLOR",  (3, -1), (3, -1), C_OSE_DARK)
         dt.setStyle(ts2)
-        content.append(dt)
+        content.append(KeepTogether([
+            Paragraph(f"Detalle: {name}", styles["account_ose"]),
+            dt,
+        ]))
 
         charts = ose_loc_charts.get(name, {})
         if charts.get("gasto") or charts.get("consumo"):
-            content.append(Spacer(1, 0.15 * cm))
-            content.append(_side_by_side(charts.get("gasto"), charts.get("consumo")))
+            content.append(KeepTogether([
+                Spacer(1, 0.15 * cm),
+                _side_by_side(charts.get("gasto"), charts.get("consumo")),
+            ]))
 
         content.append(Spacer(1, 0.25 * cm))
 
@@ -319,8 +336,9 @@ def _build_ose_section(ose_names: list[str],
 def _build_ute_section(ute_names: list[str],
                        ute_bills: dict[str, UteBill | None],
                        ute_loc_charts: dict[str, dict],
+                       ute_power_charts: dict[str, dict],
                        styles: dict) -> list:
-    content = [Paragraph("  Electricidad — UTE", styles["section_ute"])]
+    content = []
 
     _cn  = ParagraphStyle("cn",  fontSize=9, fontName="Helvetica",      leading=11)
     _hdr = ParagraphStyle("hdr", fontSize=9, fontName="Helvetica-Bold",
@@ -359,14 +377,19 @@ def _build_ute_section(ute_names: list[str],
     ts.add("ALIGN",         (0, 1),  (0, -1),  "LEFT")
     ts.add("ALIGN",         (2, 1),  (-1, -1), "RIGHT")
     tbl.setStyle(ts)
-    content.append(tbl)
-    content.append(Spacer(1, 0.3 * cm))
+    content.append(KeepTogether([
+        Paragraph("  Electricidad — UTE", styles["section_ute"]),
+        tbl,
+        Spacer(1, 0.3 * cm),
+    ]))
 
     for name in ute_names:
         b = ute_bills.get(name)
-        content.append(Paragraph(f"Detalle: {name}", styles["account_ute"]))
         if not b:
-            content.append(Paragraph("Sin factura para este período.", styles["no_bill"]))
+            content.append(KeepTogether([
+                Paragraph(f"Detalle: {name}", styles["account_ute"]),
+                Paragraph("Sin factura para este período.", styles["no_bill"]),
+            ]))
             continue
 
         reactive = b.reactive_charge or 0.0
@@ -397,16 +420,23 @@ def _build_ute_section(ute_names: list[str],
         ts2.add("TEXTCOLOR",  (3, 5),  (3, 5),  r_color)
         ts2.add("FONTNAME",   (3, 5),  (3, 5),  "Helvetica-Bold")
         dt.setStyle(ts2)
-        content.append(dt)
+        content.append(KeepTogether([
+            Paragraph(f"Detalle: {name}", styles["account_ute"]),
+            dt,
+        ]))
 
         charts = ute_loc_charts.get(name, {})
-        if charts:
-            content.append(Spacer(1, 0.15 * cm))
-            if charts.get("pvl") or charts.get("reactiva"):
-                content.append(_side_by_side(charts.get("gasto"),       charts.get("reactiva")))
-                content.append(_side_by_side(charts.get("consumo_kwh"), charts.get("pvl")))
-            else:
-                content.append(_side_by_side(charts.get("gasto"), charts.get("consumo_kwh")))
+        power = ute_power_charts.get(name, {})
+        chart_rows = []
+        if charts.get("pvl") or charts.get("reactiva"):
+            chart_rows.append(_side_by_side(charts.get("gasto"),       charts.get("reactiva")))
+            chart_rows.append(_side_by_side(charts.get("consumo_kwh"), charts.get("pvl")))
+        elif charts.get("gasto") or charts.get("consumo_kwh"):
+            chart_rows.append(_side_by_side(charts.get("gasto"), charts.get("consumo_kwh")))
+        if power.get("power"):
+            chart_rows.append(_side_by_side(power.get("power"), None))
+        if chart_rows:
+            content.append(KeepTogether([Spacer(1, 0.15 * cm)] + chart_rows))
 
         content.append(Spacer(1, 0.25 * cm))
 
@@ -417,16 +447,9 @@ def _build_ute_section(ute_names: list[str],
 
 def _build_charts_section(chart_paths: dict[str, Path], styles: dict) -> list:
     content = [
-        PageBreak(),
         Paragraph("  Análisis histórico — últimos 12 meses", styles["section_hist"]),
     ]
-    chart_order = [
-        ("ose_gasto",          "Gasto mensual en agua (OSE)"),
-        ("ose_consumo",        "Consumo de agua mensual (m³)"),
-        ("ute_gasto",          "Gasto mensual en electricidad (UTE)"),
-        ("ute_consumo_activo", "Consumo eléctrico activo mensual (kWh)"),
-    ]
-    for key, _ in chart_order:
+    for key in ("ose_gasto", "ose_consumo", "ute_gasto", "ute_consumo_activo"):
         path = chart_paths.get(key)
         if path and path.exists():
             content.append(Image(str(path), width=CONTENT_W, height=CONTENT_W * 0.38))
@@ -439,32 +462,23 @@ def _build_charts_section(chart_paths: dict[str, Path], styles: dict) -> list:
 def generate_report(db: Database, year: int, month: int, out_path: Path) -> Path:
     from config.settings import Settings
 
-    ose_names = [e["name"] for e in Settings.ose_accounts()]
-    ute_names = [e["name"] for e in Settings.ute_accounts()]
+    companies = Settings.companies()
+    multi_company = len(companies) > 1
 
-    ose_bills: dict[str, OseBill | None] = {
-        name: db.get_ose_bill_for_month(name, year, month) for name in ose_names
-    }
-    ute_bills: dict[str, UteBill | None] = {
-        name: db.get_ute_bill_for_month(name, year, month) for name in ute_names
-    }
+    ose_hist_all = db.get_ose_monthly_totals()
+    ute_hist_all = db.get_ute_monthly_totals()
 
-    ose_hist = db.get_ose_monthly_totals()
-    ute_hist = db.get_ute_monthly_totals()
+    # Pre-fetch all bills for executive summary
+    all_ose_bills: dict[str, OseBill | None] = {}
+    all_ute_bills: dict[str, UteBill | None] = {}
+    for company in companies:
+        for e in company.get("ose_accounts", []):
+            all_ose_bills[e["name"]] = db.get_ose_bill_for_month(e["name"], year, month)
+        for e in company.get("ute_accounts", []):
+            all_ute_bills[e["name"]] = db.get_ute_bill_for_month(e["name"], year, month)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-
-        global_charts = generate_charts(ose_hist, ute_hist, tmp_path)
-
-        ose_loc_charts = {
-            name: generate_ose_location_charts(name, ose_hist, tmp_path)
-            for name in ose_names
-        }
-        ute_loc_charts = {
-            name: generate_ute_location_charts(name, ute_hist, tmp_path)
-            for name in ute_names
-        }
 
         out_path.parent.mkdir(parents=True, exist_ok=True)
         doc = SimpleDocTemplate(
@@ -475,11 +489,50 @@ def generate_report(db: Database, year: int, month: int, out_path: Path) -> Path
         styles = _build_styles()
         story: list = []
         story += _build_header(year, month, styles)
-        story += _build_executive_summary(ose_names, ute_names, ose_bills, ute_bills, styles)
-        story += _build_ose_section(ose_names, ose_bills, ose_loc_charts, styles)
-        story += [Spacer(1, 0.3 * cm)]
-        story += _build_ute_section(ute_names, ute_bills, ute_loc_charts, styles)
-        story += _build_charts_section(global_charts, styles)
+
+        for company in companies:
+            company_name = company["name"]
+            ose_names = [e["name"] for e in company.get("ose_accounts", [])]
+            ute_names = [e["name"] for e in company.get("ute_accounts", [])]
+
+            ose_bills = {n: all_ose_bills[n] for n in ose_names}
+            ute_bills = {n: all_ute_bills[n] for n in ute_names}
+
+            # Filter historical rows to this company's locations
+            ose_hist = [r for r in ose_hist_all if r["location_name"] in ose_names]
+            ute_hist = [r for r in ute_hist_all if r["location_name"] in ute_names]
+
+            # Per-location charts
+            ose_loc_charts = {
+                name: generate_ose_location_charts(name, ose_hist, tmp_path)
+                for name in ose_names
+            }
+            ute_loc_charts = {
+                name: generate_ute_location_charts(name, ute_hist, tmp_path)
+                for name in ute_names
+            }
+            ute_power_charts = {
+                name: generate_ute_power_charts(name, db.get_ute_power_history(name), tmp_path)
+                for name in ute_names
+            }
+
+            if multi_company:
+                story.append(Paragraph(f"  {company_name}", styles["section_company"]))
+
+            story += _build_executive_summary(ose_names, ute_names, ose_bills, ute_bills, styles)
+            story += _build_ose_section(ose_names, ose_bills, ose_loc_charts, styles)
+            story += [Spacer(1, 0.3 * cm)]
+            story += _build_ute_section(ute_names, ute_bills, ute_loc_charts, ute_power_charts, styles)
+
+            # Global historical only when company has >1 location per service
+            need_ose_global = len(ose_names) > 1
+            need_ute_global = len(ute_names) > 1
+            if need_ose_global or need_ute_global:
+                hist_ose = ose_hist if need_ose_global else []
+                hist_ute = ute_hist if need_ute_global else []
+                global_charts = generate_charts(hist_ose, hist_ute, tmp_path)
+                story += _build_charts_section(global_charts, styles)
+
         doc.build(story)
 
     return out_path

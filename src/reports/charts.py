@@ -259,6 +259,130 @@ def generate_ute_location_charts(location_name: str, ute_rows: list[dict],
     return paths
 
 
+# ── Power demand charts ───────────────────────────────────────────────────────
+
+def _small_power_horaria(months: list[str], rows_by_month: dict,
+                          out_path: Path) -> None:
+    """Grouped bars (Punta/Valle/Llano medida) with contracted reference lines."""
+    punta_m   = [rows_by_month.get(m, {}).get("power_punta_kw") or 0.0 for m in months]
+    valle_m   = [rows_by_month.get(m, {}).get("power_valle_kw") or 0.0 for m in months]
+    llano_m   = [rows_by_month.get(m, {}).get("power_llano_kw") or 0.0 for m in months]
+
+    # Use most-recent non-null contracted values as reference lines
+    contracted: dict[str, float | None] = {"punta": None, "valle": None, "llano": None}
+    for m in reversed(months):
+        row = rows_by_month.get(m, {})
+        for k in contracted:
+            if contracted[k] is None:
+                contracted[k] = row.get(f"power_{k}_contracted_kw")
+
+    # Only include series with actual data (skip all-zero series for 2-level tariffs)
+    all_series = [
+        ("Punta",  punta_m, _PVL_COLORS[0], "punta", "--"),
+        ("Valle",  valle_m, _PVL_COLORS[1], "valle", "-."),
+        ("Llano",  llano_m, _PVL_COLORS[2], "llano", ":"),
+    ]
+    active = [(lbl, vals, col, k, ls) for lbl, vals, col, k, ls in all_series
+              if any(v > 0 for v in vals)]
+    if not active:
+        return
+
+    fig, ax = plt.subplots(figsize=(6, 3.0))
+    x = np.arange(len(months))
+    n = len(active)
+    bar_w = 0.65 / max(n, 1) * 0.85
+    for i, (lbl, vals, col, k, ls) in enumerate(active):
+        offset = (i - (n - 1) / 2) * bar_w
+        ax.bar(x + offset, vals, bar_w, label=f"{lbl} medida", color=col, zorder=2)
+
+    for _, _, color, k, ls in active:
+        if contracted[k]:
+            ax.axhline(contracted[k], color=color, linestyle=ls, linewidth=1.2,
+                       label=f"{k.capitalize()} contratada ({contracted[k]:.0f} kW)", zorder=3)
+
+    ax.set_title("Demanda horaria (kW)", fontsize=9, fontweight="bold", pad=5)
+    ax.set_ylabel("kW", fontsize=7)
+    ax.set_xticks(x)
+    ax.set_xticklabels([_month_label(m) for m in months],
+                       rotation=45, ha="right", fontsize=7)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}"))
+    ax.legend(fontsize=6, loc="upper left", ncol=2)
+    ax.grid(axis="y", alpha=0.3, zorder=0)
+    ax.spines[["top", "right"]].set_visible(False)
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+
+
+def _small_power_simple(months: list[str], rows_by_month: dict,
+                         out_path: Path) -> None:
+    """Bar chart of measured demand with contracted/min-billable reference lines."""
+    measured = [rows_by_month.get(m, {}).get("power_measured_kw") or 0.0 for m in months]
+
+    contracted_kw: float | None = None
+    min_billable_kw: float | None = None
+    for m in reversed(months):
+        row = rows_by_month.get(m, {})
+        if contracted_kw is None:
+            contracted_kw = row.get("power_contracted_kw")
+        if min_billable_kw is None:
+            min_billable_kw = row.get("power_min_billable_kw")
+
+    fig, ax = plt.subplots(figsize=(6, 3.0))
+    x = np.arange(len(months))
+    ax.bar(x, measured, 0.65, color=_UTE_COLOR, label="Demanda medida", zorder=2)
+
+    if contracted_kw:
+        ax.axhline(contracted_kw, color="#c0392b", linestyle="--", linewidth=1.4,
+                   label=f"Contratada ({contracted_kw:.0f} kW)", zorder=3)
+    if min_billable_kw is not None and min_billable_kw > 0:
+        ax.axhline(min_billable_kw, color="#e67e22", linestyle=":", linewidth=1.4,
+                   label=f"Mín. facturable ({min_billable_kw:.0f} kW)", zorder=3)
+
+    ax.set_title("Demanda activa (kW)", fontsize=9, fontweight="bold", pad=5)
+    ax.set_ylabel("kW", fontsize=7)
+    ax.set_xticks(x)
+    ax.set_xticklabels([_month_label(m) for m in months],
+                       rotation=45, ha="right", fontsize=7)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: f"{v:.0f}"))
+    ax.legend(fontsize=7, loc="upper left")
+    ax.grid(axis="y", alpha=0.3, zorder=0)
+    ax.spines[["top", "right"]].set_visible(False)
+    plt.tight_layout()
+    fig.savefig(out_path, dpi=130, bbox_inches="tight")
+    plt.close(fig)
+
+
+def generate_ute_power_charts(location_name: str, power_rows: list[dict],
+                               output_dir: Path) -> dict[str, Path]:
+    """Generate power demand chart for one UTE location if data exists."""
+    if not power_rows:
+        return {}
+
+    months = sorted({r["month"] for r in power_rows})[-12:]
+    by_m = {r["month"]: r for r in power_rows if r["month"] in months}
+
+    has_horaria = any(by_m.get(m, {}).get("power_punta_kw") is not None for m in months)
+    has_simple  = any(by_m.get(m, {}).get("power_measured_kw") is not None for m in months)
+
+    if not has_horaria and not has_simple:
+        return {}
+
+    safe = location_name.replace(" ", "_").replace(".", "").replace("/", "_")
+    paths: dict[str, Path] = {}
+
+    if has_horaria:
+        p = output_dir / f"ute_loc_power_horaria_{safe}.png"
+        _small_power_horaria(months, by_m, p)
+        paths["power"] = p
+    else:
+        p = output_dir / f"ute_loc_power_simple_{safe}.png"
+        _small_power_simple(months, by_m, p)
+        paths["power"] = p
+
+    return paths
+
+
 # ── Public entry point ────────────────────────────────────────────────────────
 
 def generate_charts(ose_rows: list[dict], ute_rows: list[dict],
