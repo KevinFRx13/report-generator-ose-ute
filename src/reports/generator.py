@@ -270,15 +270,17 @@ def _build_ose_section(ose_names: list[str],
                          _m3(b.consumption_m3), _uyu(b.total_amount)])
         else:
             rows.append([name, "Sin factura", "—", "—"])
-    total_ose = sum(b.total_amount for b in ose_bills.values() if b)
-    rows.append(["TOTAL OSE", "", "", _uyu(total_ose)])
+    if len(ose_names) > 1:
+        total_ose = sum(b.total_amount for b in ose_bills.values() if b)
+        rows.append(["TOTAL OSE", "", "", _uyu(total_ose)])
 
     col_w = [CONTENT_W * 0.38, CONTENT_W * 0.28, CONTENT_W * 0.17, CONTENT_W * 0.17]
     tbl = Table(rows, colWidths=col_w)
     ts = TableStyle(_header_row_style(C_OSE_DARK))
     ts.add("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, C_OSE_LIGHT])
-    ts.add("BACKGROUND",    (0, -1), (-1, -1), C_TOTAL_BG)
-    ts.add("FONTNAME",      (0, -1), (-1, -1), "Helvetica-Bold")
+    if len(ose_names) > 1:
+        ts.add("BACKGROUND",    (0, -1), (-1, -1), C_TOTAL_BG)
+        ts.add("FONTNAME",      (0, -1), (-1, -1), "Helvetica-Bold")
     ts.add("ALIGN",         (0, 1),  (0, -1),  "LEFT")
     ts.add("ALIGN",         (2, 1),  (-1, -1), "RIGHT")
     tbl.setStyle(ts)
@@ -364,16 +366,18 @@ def _build_ute_section(ute_names: list[str],
                          _uyu(b.total_amount)])
         else:
             rows.append([Paragraph(name, _cn), "Sin factura", "—", "—", "—"])
-    total_ute = sum(b.total_amount for b in ute_bills.values() if b)
-    rows.append(["TOTAL UTE", "", "", "", _uyu(total_ute)])
+    if len(ute_names) > 1:
+        total_ute = sum(b.total_amount for b in ute_bills.values() if b)
+        rows.append(["TOTAL UTE", "", "", "", _uyu(total_ute)])
 
     col_w = [CONTENT_W * 0.33, CONTENT_W * 0.21,
              CONTENT_W * 0.16, CONTENT_W * 0.15, CONTENT_W * 0.15]
     tbl = Table(rows, colWidths=col_w)
     ts = TableStyle(_header_row_style(C_UTE_DARK))
     ts.add("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, C_UTE_LIGHT])
-    ts.add("BACKGROUND",    (0, -1), (-1, -1), C_TOTAL_BG)
-    ts.add("FONTNAME",      (0, -1), (-1, -1), "Helvetica-Bold")
+    if len(ute_names) > 1:
+        ts.add("BACKGROUND",    (0, -1), (-1, -1), C_TOTAL_BG)
+        ts.add("FONTNAME",      (0, -1), (-1, -1), "Helvetica-Bold")
     ts.add("ALIGN",         (0, 1),  (0, -1),  "LEFT")
     ts.add("ALIGN",         (2, 1),  (-1, -1), "RIGHT")
     tbl.setStyle(ts)
