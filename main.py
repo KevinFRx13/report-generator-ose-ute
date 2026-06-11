@@ -57,6 +57,9 @@ def _parse_year_month(ym: str) -> tuple[int, int]:
 
 def _process_pdf_file(pdf_path: Path, db: Database) -> bool:
     """Parse a single PDF, identify its type, and store it in the DB. Returns True if new."""
+    if db.pdf_already_imported(pdf_path):
+        print(f"  [omitida] {pdf_path.name} (ya importada)")
+        return False
     try:
         utility = detect_utility(pdf_path)
         if utility == "OSE":

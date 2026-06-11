@@ -325,6 +325,18 @@ class Database:
             ).fetchone()
         return row is not None
 
+    def pdf_already_imported(self, pdf_path: str) -> bool:
+        """Return True if this PDF path is already recorded in either table."""
+        p = str(pdf_path).replace("\\", "/")
+        with self._conn() as conn:
+            for table in ("ose_bills", "ute_bills"):
+                row = conn.execute(
+                    f"SELECT 1 FROM {table} WHERE replace(pdf_path, '\\', '/') = ?", (p,)
+                ).fetchone()
+                if row:
+                    return True
+        return False
+
 
 # ── Row → dataclass helpers ───────────────────────────────────────────────────
 

@@ -37,9 +37,15 @@ def _parse_num(value) -> float | None:
         return None
 
     if ',' in s and '.' in s:
+        # Spanish format: 1.234,56 → 1234.56
         s = s.replace('.', '').replace(',', '.')
     elif ',' in s:
         s = s.replace(',', '.')
+    elif s.count('.') > 1:
+        # Model error: returned 3.668.680 instead of 3.668,680
+        # Treat the last dot as decimal, remove the rest as thousands separators
+        last = s.rfind('.')
+        s = s[:last].replace('.', '') + '.' + s[last + 1:]
 
     return float(s)
 
@@ -113,6 +119,8 @@ ESQUEMA (todos los valores numéricos como STRING, tal como aparecen en la factu
 
 REGLAS CRÍTICAS:
 - Devuelve los importes y kWh EXACTAMENTE como aparecen en la factura (ej: '2.454,840', no 2454840).
+  En Uruguay, el punto es separador de miles y la coma es separador decimal. Ej: '3.668,680' = tres mil seiscientos sesenta y ocho punto sesenta y ocho (3668.68 kWh), NO tres millones.
+  El separador decimal siempre es la COMA. NUNCA uses punto como decimal en los valores numéricos del JSON.
 - TODAS las fechas en la factura están en formato DD/MM/AAAA (día primero, luego mes, luego año).
   Ejemplo: '03/06/2026' = 3 de junio de 2026 = '2026-06-03'. NO es el 6 de marzo.
 - El orden en el texto es: Nº Cuenta → Fecha cobro → 'B XXXXXX' → Fecha Emisión → Fecha Próx.Vcto.
