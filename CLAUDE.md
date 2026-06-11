@@ -77,5 +77,6 @@ for col in ["nueva_columna_1", "nueva_columna_2"]:
 Las columnas de potencia en `ute_bills` se llenan al procesar nuevas facturas via API. Para el historial existente se llenaron manualmente leyendo los PDFs con PyMuPDF (sin llamar a la API).
 
 - **Cno. Casavalle - Planta** (Gran Consumidor): horaria 3 niveles — Punta contratada varía (200→41 kW desde oct-2025), Valle/Llano = 250 kW
-- **Gral. Hornos** (Tarifa Horaria Estacional - Zafral): simple — contratada 40 kW, sin mínimo facturable separado
+- **Gral. Hornos** (Tarifa Horaria Estacional - Zafral): 2 niveles — `power_punta_kw` (Punta/Llano combinado) + `power_valle_kw`; contratada 40 kW en ambos; factor de medidor ×1
+- **Pestalozzi 3857** (Mediano Consumidor): 2 niveles — `power_punta_kw` (Punta/Llano combinado) + `power_valle_kw`; contratada 70 kW en ambos; factor de medidor ×40
 - **Tacuarembó** (General Simple): sin medición de demanda → sin gráfico de potencia
