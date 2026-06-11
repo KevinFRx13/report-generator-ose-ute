@@ -287,6 +287,12 @@ def _small_power_horaria(months: list[str], rows_by_month: dict,
     if not active:
         return
 
+    # 2-level tariff (no Llano data): relabel "Punta" as "Punta/Llano"
+    has_llano = any(k == "llano" for _, _, _, k, _ in active)
+    if not has_llano:
+        active = [("Punta/Llano" if lbl == "Punta" else lbl, vals, col, k, ls)
+                  for lbl, vals, col, k, ls in active]
+
     fig, ax = plt.subplots(figsize=(6, 3.0))
     x = np.arange(len(months))
     n = len(active)
@@ -295,10 +301,10 @@ def _small_power_horaria(months: list[str], rows_by_month: dict,
         offset = (i - (n - 1) / 2) * bar_w
         ax.bar(x + offset, vals, bar_w, label=f"{lbl} medida", color=col, zorder=2)
 
-    for _, _, color, k, ls in active:
+    for lbl, _, color, k, ls in active:
         if contracted[k]:
             ax.axhline(contracted[k], color=color, linestyle=ls, linewidth=1.2,
-                       label=f"{k.capitalize()} contratada ({contracted[k]:.0f} kW)", zorder=3)
+                       label=f"{lbl} contratada ({contracted[k]:.0f} kW)", zorder=3)
 
     ax.set_title("Demanda horaria (kW)", fontsize=9, fontweight="bold", pad=5)
     ax.set_ylabel("kW", fontsize=7)
